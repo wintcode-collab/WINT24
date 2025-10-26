@@ -23,6 +23,7 @@ class AutoSenderDaemon:
         self.user_email = user_email
         self.is_running = False
         self.temp_files = []
+        self.group_wait_times = {}  # {group_id: wait_until_timestamp}
         
     def log(self, message):
         """로그 출력"""
@@ -369,6 +370,19 @@ class AutoSenderDaemon:
                 if not group_id:
                     continue
                 
+                # 대기 중인 그룹인지 확인
+                if group_id in self.group_wait_times:
+                    wait_until = self.group_wait_times[group_id]
+                    current_time = time.time()
+                    if current_time < wait_until:
+                        wait_seconds = int(wait_until - current_time)
+                        self.log(f"⏸️ 그룹 '{group_title}' 슬로우 모드 대기 중... ({wait_seconds}초 남음)")
+                        continue
+                    else:
+                        # 대기 시간 지남
+                        del self.group_wait_times[group_id]
+                        self.log(f"✅ 그룹 '{group_title}' 슬로우 모드 해제 - 전송 재개")
+                
                 message_count = 0
                 for message_data in messages:
                     if not self.is_running:
@@ -395,7 +409,31 @@ class AutoSenderDaemon:
                         self.log(f"✅ 메시지 전달 성공: {channel_title} -> {group_title}")
                         
                     except Exception as e:
-                        self.log(f"❌ 메시지 전달 실패 ({channel_title} -> {group_title}): {e}")
+                        error_str = str(e)
+                        # FloodWait 에러 처리
+                        if "FLOOD_WAIT" in error_str or "flood" in error_str.lower():
+                            try:
+                                # 에러 메시지에서 대기 시간 추출
+                                import re
+                                wait_match = re.search(r'(\d+)', error_str)
+                                if wait_match:
+                                    wait_seconds = int(wait_match.group(1))
+                                    # 약간의 여유 시간 추가
+                                    wait_until = time.time() + wait_seconds + 5
+                                    self.group_wait_times[group_id] = wait_until
+                                    self.log(f"⚠️ 그룹 '{group_title}' 슬로우 모드 활성화 - {wait_seconds}초 대기")
+                                else:
+                                    # 기본 대기 시간 (60초)
+                                    wait_until = time.time() + 60
+                                    self.group_wait_times[group_id] = wait_until
+                                    self.log(f"⚠️ 그룹 '{group_title}' 슬로우 모드 활성화 - 60초 대기")
+                            except:
+                                # 기본 대기 시간 (60초)
+                                wait_until = time.time() + 60
+                                self.group_wait_times[group_id] = wait_until
+                                self.log(f"⚠️ 그룹 '{group_title}' 슬로우 모드 활성화 - 60초 대기")
+                        else:
+                            self.log(f"❌ 메시지 전달 실패 ({channel_title} -> {group_title}): {e}")
                 
                 if message_count > 0:
                     self.log(f"✅ 그룹 '{group_title}'에 {message_count}개 메시지 전송 성공")
