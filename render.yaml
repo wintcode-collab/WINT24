@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: telegram-auto-sender
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python auto_sender_daemon.py wint365
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    # 무료 플랜은 sleep 됨, 유료 플랜 권장
+    plan: starter  # 또는 free (무료)
+

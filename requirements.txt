@@ -1,0 +1,13 @@
+# Python 메인 애플리케이션 의존성
+
+# 텔레그램 클라이언트
+telethon>=1.28.5
+
+# Firebase 관리
+firebase-admin>=6.2.0
+
+# 이미지 처리
+Pillow>=9.0.0
+
+# 추가 라이브러리
+requests>=2.25.1
