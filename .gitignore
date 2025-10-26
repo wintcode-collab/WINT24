@@ -1,0 +1,38 @@
+# Python 캐시
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C# 빌드 결과물
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+
+# C# 소스 파일
+*.cs
+*.xaml
+*.csproj
+
+# 보안 - 세션 파일
+*.session
+
+# 로컬 설정 파일
+selected_accounts.json
+selected_groups.json
+telegram_accounts.json
+firebase_config_example.json
+
+# 테스트 파일
+test_*.py
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# 기타
+.DS_Store
+*.log
+

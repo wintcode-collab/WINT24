@@ -3,14 +3,20 @@
 백그라운드 자동전송 데몬
 Render에서 실행되어 PC와 무관하게 계속 실행됨
 """
+import sys
+import time
 import requests
 import asyncio
 import base64
 import tempfile
 from telethon import TelegramClient
-import time
-import sys
 from datetime import datetime
+
+# 즉시 출력
+print("=" * 60)
+print("🚀 auto_sender_daemon.py 시작")
+print("=" * 60)
+sys.stdout.flush()
 
 class AutoSenderDaemon:
     def __init__(self, user_email):
