@@ -32,7 +32,7 @@ class AutoSenderDaemon:
         sys.stdout.flush()
         
     def check_firebase_status(self):
-        """Firebase에서 자동전송 상태 확인"""
+        """DMA에서 자동전송 상태 확인"""
         try:
             firebase_url = "https://wint365-date-default-rtdb.asia-southeast1.firebasedatabase.app"
             status_url = f"{firebase_url}/users/{self.user_email}/auto_send_status.json"
@@ -119,15 +119,15 @@ class AutoSenderDaemon:
         self.log(f"사용자: {self.user_email}")
         self.log("=" * 60)
         
-        # 무한 루프 - Firebase 상태 확인
+        # 무한 루프 - DMA 상태 확인
         while True:
             try:
-                # Firebase에서 상태 확인
+                # DMA에서 상태 확인
                 should_run = self.check_firebase_status()
                 
                 if should_run and not self.is_running:
                     # 시작
-                    self.log("📱 Firebase 상태: ON - 자동전송 시작")
+                    self.log("📱 DMA 상태: ON - 자동전송 시작")
                     self.is_running = True
                     # 별도 스레드에서 실행
                     import threading
@@ -135,7 +135,7 @@ class AutoSenderDaemon:
                     thread.start()
                 elif not should_run and self.is_running:
                     # 중지
-                    self.log("🛑 Firebase 상태: OFF - 자동전송 중지")
+                    self.log("🛑 DMA 상태: OFF - 자동전송 중지")
                     self.is_running = False
                 
                 # 5초마다 상태 확인
@@ -172,9 +172,9 @@ class AutoSenderDaemon:
             # 무한 루프
             cycle_count = 0
             while self.is_running:
-                # Firebase 상태 계속 확인
+                # DMA 상태 계속 확인
                 if not self.check_firebase_status():
-                    self.log("Firebase에서 OFF 신호 받음 - 중지")
+                    self.log("DMA에서 OFF 신호 받음 - 중지")
                     self.is_running = False
                     break
                 
