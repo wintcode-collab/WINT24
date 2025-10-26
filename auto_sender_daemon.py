@@ -28,6 +28,7 @@ class AutoSenderDaemon:
         """로그 출력"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"[{timestamp}] {message}")
+        sys.stdout.flush()
         
     def check_firebase_status(self):
         """Firebase에서 자동전송 상태 확인"""
@@ -471,8 +472,15 @@ def main():
         sys.exit(1)
     
     user_email = sys.argv[1]
+    print(f"DEBUG: user_email = {user_email}")
+    sys.stdout.flush()
     
+    print("DEBUG: AutoSenderDaemon 인스턴스 생성 중...")
+    sys.stdout.flush()
     daemon = AutoSenderDaemon(user_email)
+    
+    print("DEBUG: daemon.run() 호출 중...")
+    sys.stdout.flush()
     daemon.run()
 
 
