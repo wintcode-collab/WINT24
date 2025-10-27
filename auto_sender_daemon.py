@@ -287,11 +287,11 @@ class AutoSenderDaemon:
         """계정 찾기"""
         if isinstance(accounts, list):
             for account in accounts:
-                if account.get('phone') == phone:
+                if account is not None and isinstance(account, dict) and account.get('phone') == phone:
                     return account
         elif isinstance(accounts, dict):
             for account in accounts.values():
-                if account.get('phone') == phone:
+                if account is not None and isinstance(account, dict) and account.get('phone') == phone:
                     return account
         return None
     
