@@ -199,37 +199,17 @@ class AutoSender:
                     time.sleep(10)  # 10초 대기 후 다시 시도
                     continue
                 
-                for pool_info in pool_order:
+                # 풀별로 구분하여 전송
+                previous_pool = None
+                for i, pool_info in enumerate(pool_order):
                     if not self.is_running:
                         break
                     
                     pool_name = pool_info['pool_name']
                     account_phone = pool_info['account_phone']
                     
-                    self.log(f"📦 풀 {pool_name} 계정 {account_phone} 시작")
-                    
-                    # 계정 찾기
-                    account = self.find_account(accounts, account_phone)
-                    if not account:
-                        self.log(f"⚠️ 계정 {account_phone}을 찾을 수 없습니다.")
-                        continue
-                    
-                    # 해당 계정의 그룹 찾기
-                    account_groups = self.get_account_groups(groups, account_phone)
-                    if not account_groups:
-                        self.log(f"⚠️ 계정 {account_phone}의 그룹이 없습니다.")
-                        continue
-                    
-                    self.log(f"📋 총 {len(account_groups)}개 그룹에 메시지 전송")
-                    
-                    # 메시지 전송
-                    success = self.send_messages_to_groups(
-                        account, account_groups, messages, group_interval
-                    )
-                    
-                    if success:
-                        self.log(f"✅ 풀 {pool_name} 계정 {account_phone} 완료")
-                        
+                    # 풀이 바뀌면 풀 간 대기 (풀1 전체 완료 후 풀2 시작 전에 대기)
+                    if previous_pool is not None and previous_pool != pool_name:
                         if pool_interval > 0:
                             minutes = pool_interval // 60
                             seconds = pool_interval % 60
@@ -252,8 +232,39 @@ class AutoSender:
                                         self.log(f"⏱️ 대기 중... 남은 시간: {minutes}분 {seconds}초")
                                     else:
                                         self.log(f"⏱️ 대기 중... 남은 시간: {seconds}초")
+                    
+                    self.log(f"📦 풀 {pool_name} 계정 {account_phone} 시작")
+                    
+                    # 계정 찾기
+                    account = self.find_account(accounts, account_phone)
+                    if not account:
+                        self.log(f"⚠️ 계정 {account_phone}을 찾을 수 없습니다.")
+                        previous_pool = pool_name
+                        continue
+                    
+                    # 해당 계정의 그룹 찾기
+                    account_groups = self.get_account_groups(groups, account_phone)
+                    if not account_groups:
+                        self.log(f"⚠️ 계정 {account_phone}의 그룹이 없습니다.")
+                        previous_pool = pool_name
+                        continue
+                    
+                    self.log(f"📋 총 {len(account_groups)}개 그룹에 메시지 전송")
+                    
+                    # 메시지 전송
+                    success = self.send_messages_to_groups(
+                        account, account_groups, messages, group_interval
+                    )
+                    
+                    if success:
+                        self.log(f"✅ 풀 {pool_name} 계정 {account_phone} 완료")
                     else:
                         self.log(f"❌ 풀 {pool_name} 계정 {account_phone} 전송 실패")
+                        self.log(f"⚠️ 계정 블락/정지 가능성으로 자동전송 즉시 중단")
+                        self.is_running = False
+                        break
+                    
+                    previous_pool = pool_name
                 
                 cycle_count += 1
                         
@@ -275,17 +286,16 @@ class AutoSender:
                 # 상태 콜백은 이미 stop_auto_send에서 호출됨
     
     def create_pool_order(self, pools):
-        """풀 로테이션 순서 생성"""
+        """풀 전체 계정 완료 방식 순서 생성"""
         pool_order = []
-        max_pool_size = max(len(accounts) for accounts in pools.values()) if pools else 0
         
-        for i in range(max_pool_size):
-            for pool_name, accounts in pools.items():
-                if i < len(accounts):
-                    pool_order.append({
-                        'pool_name': pool_name,
-                        'account_phone': accounts[i]
-                    })
+        # 각 풀의 모든 계정을 먼저 처리하고 다음 풀로
+        for pool_name, accounts in pools.items():
+            for account_phone in accounts:
+                pool_order.append({
+                    'pool_name': pool_name,
+                    'account_phone': account_phone
+                })
         
         return pool_order
     
