@@ -12,9 +12,25 @@ import tempfile
 from telethon import TelegramClient
 from datetime import datetime
 import warnings
+import logging
 
-# Telethon TypeNotFoundError 경고 무시
+# Telethon TypeNotFoundError 경고 완전 무시
 warnings.filterwarnings('ignore', category=UserWarning, module='telethon')
+
+# Telethon 로깅 차단
+logging.getLogger('telethon').setLevel(logging.CRITICAL)
+logging.getLogger('telethon.session').setLevel(logging.CRITICAL)
+logging.getLogger('telethon.network.mtprotosender').setLevel(logging.CRITICAL)
+
+# 전역 예외 핸들러로 TypeNotFoundError 무시
+import sys
+def custom_excepthook(exc_type, exc_value, exc_traceback):
+    if 'TypeNotFoundError' in str(exc_type) or 'Could not find a matching Constructor ID' in str(exc_value):
+        return  # 완전 무시
+    # 그 외의 오류는 원래대로 출력
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+sys.excepthook = custom_excepthook
 
 # 즉시 출력
 print("=" * 60)
@@ -30,10 +46,39 @@ class AutoSenderDaemon:
         self.group_wait_times = {}  # {group_id: wait_until_timestamp}
         
     def log(self, message):
-        """로그 출력"""
+        """로그 출력 및 DMA 저장"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"[{timestamp}] {message}")
+        log_line = f"[{timestamp}] {message}"
+        print(log_line)
         sys.stdout.flush()
+        
+        # DMA에 로그 저장
+        try:
+            firebase_url = "https://wint365-date-default-rtdb.asia-southeast1.firebasedatabase.app"
+            logs_url = f"{firebase_url}/users/{self.user_email}/render_logs.json"
+            
+            # 기존 로그 가져오기
+            try:
+                response = requests.get(logs_url, timeout=2)
+                existing_logs = response.text if response.status_code == 200 and response.text != "null" else ""
+            except:
+                existing_logs = ""
+            
+            # 새 로그 추가 (최근 1000줄만 유지)
+            if existing_logs:
+                existing_logs = existing_logs.strip('"').replace("\\n", "\n")
+                lines = existing_logs.split("\n")
+                if len(lines) > 1000:
+                    lines = lines[-1000:]  # 최근 1000줄만 유지
+                existing_logs = "\n".join(lines)
+            
+            new_logs = existing_logs + "\n" + log_line if existing_logs else log_line
+            
+            # DMA에 저장
+            requests.put(logs_url, json=new_logs, timeout=2)
+        except Exception as e:
+            # 로그 저장 실패해도 계속 진행
+            pass
         
     def check_firebase_status(self):
         """DMA에서 자동전송 상태 확인"""
