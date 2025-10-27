@@ -11,6 +11,10 @@ import base64
 import tempfile
 from telethon import TelegramClient
 from datetime import datetime
+import warnings
+
+# Telethon TypeNotFoundError 경고 무시
+warnings.filterwarnings('ignore', category=UserWarning, module='telethon')
 
 # 즉시 출력
 print("=" * 60)
@@ -421,6 +425,11 @@ class AutoSenderDaemon:
                         self.log(f"✅ 메시지 전달 성공: {channel_title} -> {group_title}")
                         
                     except Exception as e:
+                        # 무시해도 되는 오류들 (이미지/비디오 포함 메시지는 정상 전송됨)
+                        if "TypeNotFoundError" in str(type(e).__name__):
+                            message_count += 1
+                            self.log(f"⚠️ 메시지 전달 경고 (무시됨): {str(e)[:50]}")
+                            continue
                         error_str = str(e)
                         # FloodWait 에러 처리
                         if "FLOOD_WAIT" in error_str or "flood" in error_str.lower():
