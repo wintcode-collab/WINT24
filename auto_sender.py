@@ -164,6 +164,10 @@ class AutoSender:
                 group_interval = int(settings.get('group_interval_seconds', 10))
                 pool_interval = int(settings.get('pool_interval_minutes', 5)) * 60
                 pool_order = self.create_pool_order(pools)
+                
+                # ?�상 ?�요 ?�간 계산 �?출력
+                estimated_time = self.calculate_estimated_time(pools, groups, settings)
+                self.log(f"?�️ ?�상 ?�요 ?�간 (?�1?��?2?�다???�1): {estimated_time}")
             
             # 무한 루프 (?��? 중간???�기지 ?�음)
             cycle_count = 0
@@ -291,6 +295,45 @@ class AutoSender:
                 })
         
         return pool_order
+    
+    def calculate_estimated_time(self, pools, groups, settings):
+        """?�상 ?�요 ?�간 계산 (?�나???�이?? ?�1 ???�2 ???�시 ?�1)"""
+        try:
+            if not settings or not pools or not groups:
+                return 0
+            
+            group_interval = int(settings.get('group_interval_seconds', 10))
+            pool_interval = int(settings.get('pool_interval_minutes', 5)) * 60
+            
+            total_time = 0
+            
+            # �??�별로 ?�간 계산
+            for pool_name, accounts in pools.items():
+                pool_time = 0
+                
+                # �?계정??그룹 ?��? ?�어???�송 ?�간 계산
+                for account_phone in accounts:
+                    account_groups = self.get_account_groups(groups, account_phone)
+                    if account_groups:
+                        # 그룹 ??× 그룹 �?간격
+                        # + 메시지 ?�송 ?�간 (??2�?그룹�?가??
+                        group_count = len(account_groups)
+                        send_time = group_count * (group_interval + 2)  # 간격 + ?�송?�간
+                        pool_time += send_time
+                
+                total_time += pool_time
+                
+                # ?� �??��??�간 (마�?�??� ?�외)
+                if pool_name != list(pools.keys())[-1]:
+                    total_time += pool_interval
+            
+            # 초�? 분으�?변??            minutes = total_time // 60
+            seconds = total_time % 60
+            
+            return f"{minutes}�?{seconds}�? if minutes > 0 else f"{seconds}�?
+        except Exception as e:
+            print(f"?�상 ?�요 ?�간 계산 ?�류: {e}")
+            return "계산 불�?"
     
     def find_account(self, accounts, phone):
         """계정 찾기"""
@@ -464,17 +507,12 @@ class AutoSender:
         """계정??메시지 목록 가?�오�?""
         account_messages = []
         
+        # 계정 ?�화번호 ?�규??        phone_key = account_phone.replace('+', '').replace(' ', '').replace('-', '')
+        
         if isinstance(messages, dict):
-            for msg_id, msg_data in messages.items():
-                # msg_data가 문자?�인 경우 처리
-                if isinstance(msg_data, str):
-                    continue
-                
-                if not isinstance(msg_data, dict):
-                    continue
-                
-                if msg_data.get('account_phone') == account_phone:
-                    # selected_messages 배열??가?�오�?                    selected_messages = msg_data.get('selected_messages', [])
+            # 모든 ??��???�회?�면??account_phone?�로 ?�터�?            for key, data in messages.items():
+                if isinstance(data, dict) and data.get('account_phone', '').replace('+', '').replace(' ', '').replace('-', '') == phone_key:
+                    # selected_messages 배열??가?�오�?                    selected_messages = data.get('selected_messages', [])
                     
                     # �?메시지???�???�보 구성
                     for msg in selected_messages:
@@ -493,6 +531,7 @@ class AutoSender:
                                 'message_id': message_id,
                                 'channel_title': group_title
                             })
+                    break
         
         return account_messages
     
