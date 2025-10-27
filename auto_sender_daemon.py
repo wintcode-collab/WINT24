@@ -46,39 +46,11 @@ class AutoSenderDaemon:
         self.group_wait_times = {}  # {group_id: wait_until_timestamp}
         
     def log(self, message):
-        """로그 출력 및 DMA 저장"""
+        """로그 출력"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_line = f"[{timestamp}] {message}"
         print(log_line)
         sys.stdout.flush()
-        
-        # DMA에 로그 저장
-        try:
-            firebase_url = "https://wint24-62cd2-default-rtdb.asia-southeast1.firebasedatabase.app"
-            logs_url = f"{firebase_url}/users/{self.user_email}/render_logs.json"
-            
-            # 기존 로그 가져오기
-            try:
-                response = requests.get(logs_url, timeout=2)
-                existing_logs = response.text if response.status_code == 200 and response.text != "null" else ""
-            except:
-                existing_logs = ""
-            
-            # 새 로그 추가 (최근 1000줄만 유지)
-            if existing_logs:
-                existing_logs = existing_logs.strip('"').replace("\\n", "\n")
-                lines = existing_logs.split("\n")
-                if len(lines) > 1000:
-                    lines = lines[-1000:]  # 최근 1000줄만 유지
-                existing_logs = "\n".join(lines)
-            
-            new_logs = existing_logs + "\n" + log_line if existing_logs else log_line
-            
-            # DMA에 저장
-            requests.put(logs_url, json=new_logs, timeout=2)
-        except Exception as e:
-            # 로그 저장 실패해도 계속 진행
-            pass
         
     def check_firebase_status(self):
         """DMA에서 자동전송 상태 확인"""
