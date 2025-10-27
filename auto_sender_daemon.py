@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-백그라운드 자동전송 데몬
-Render에서 실행되어 PC와 무관하게 계속 실행됨
-"""
+백그?�운???�동?�송 ?�몬
+Render?�서 ?�행?�어 PC?� 무�??�게 계속 ?�행??"""
 import sys
 import time
 import requests
@@ -14,7 +13,7 @@ from datetime import datetime
 import warnings
 import logging
 
-# Telethon TypeNotFoundError 경고 완전 무시
+# Telethon TypeNotFoundError 경고 ?�전 무시
 warnings.filterwarnings('ignore', category=UserWarning, module='telethon')
 
 # Telethon 로깅 차단
@@ -22,19 +21,19 @@ logging.getLogger('telethon').setLevel(logging.CRITICAL)
 logging.getLogger('telethon.session').setLevel(logging.CRITICAL)
 logging.getLogger('telethon.network.mtprotosender').setLevel(logging.CRITICAL)
 
-# 전역 예외 핸들러로 TypeNotFoundError 무시
+# ?�역 ?�외 ?�들?�로 TypeNotFoundError 무시
 import sys
 def custom_excepthook(exc_type, exc_value, exc_traceback):
     if 'TypeNotFoundError' in str(exc_type) or 'Could not find a matching Constructor ID' in str(exc_value):
-        return  # 완전 무시
-    # 그 외의 오류는 원래대로 출력
+        return  # ?�전 무시
+    # �??�의 ?�류???�래?��?출력
     sys.__excepthook__(exc_type, exc_value, exc_traceback)
 
 sys.excepthook = custom_excepthook
 
 # 즉시 출력
 print("=" * 60)
-print("🚀 auto_sender_daemon.py 시작")
+print("?? auto_sender_daemon.py ?�작")
 print("=" * 60)
 sys.stdout.flush()
 
@@ -46,44 +45,16 @@ class AutoSenderDaemon:
         self.group_wait_times = {}  # {group_id: wait_until_timestamp}
         
     def log(self, message):
-        """로그 출력 및 DMA 저장"""
+        """로그 출력"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_line = f"[{timestamp}] {message}"
         print(log_line)
         sys.stdout.flush()
         
-        # DMA에 로그 저장
-        try:
-            firebase_url = "https://wint365-date-default-rtdb.asia-southeast1.firebasedatabase.app"
-            logs_url = f"{firebase_url}/users/{self.user_email}/render_logs.json"
-            
-            # 기존 로그 가져오기
-            try:
-                response = requests.get(logs_url, timeout=2)
-                existing_logs = response.text if response.status_code == 200 and response.text != "null" else ""
-            except:
-                existing_logs = ""
-            
-            # 새 로그 추가 (최근 1000줄만 유지)
-            if existing_logs:
-                existing_logs = existing_logs.strip('"').replace("\\n", "\n")
-                lines = existing_logs.split("\n")
-                if len(lines) > 1000:
-                    lines = lines[-1000:]  # 최근 1000줄만 유지
-                existing_logs = "\n".join(lines)
-            
-            new_logs = existing_logs + "\n" + log_line if existing_logs else log_line
-            
-            # DMA에 저장
-            requests.put(logs_url, json=new_logs, timeout=2)
-        except Exception as e:
-            # 로그 저장 실패해도 계속 진행
-            pass
-        
     def check_firebase_status(self):
-        """DMA에서 자동전송 상태 확인"""
+        """DMA?�서 ?�동?�송 ?�태 ?�인"""
         try:
-            firebase_url = "https://wint365-date-default-rtdb.asia-southeast1.firebasedatabase.app"
+            firebase_url = "https://wint24-62cd2-default-rtdb.asia-southeast1.firebasedatabase.app"
             status_url = f"{firebase_url}/users/{self.user_email}/auto_send_status.json"
             
             response = requests.get(status_url, timeout=5)
@@ -91,26 +62,26 @@ class AutoSenderDaemon:
                 status_data = response.json()
                 return status_data and status_data.get('is_running', False)
         except Exception as e:
-            self.log(f"상태 확인 오류: {e}")
+            self.log(f"?�태 ?�인 ?�류: {e}")
         return False
     
     def load_settings(self):
-        """전송 설정 로드"""
+        """?�송 ?�정 로드"""
         try:
-            firebase_url = "https://wint365-date-default-rtdb.asia-southeast1.firebasedatabase.app"
+            firebase_url = "https://wint24-62cd2-default-rtdb.asia-southeast1.firebasedatabase.app"
             settings_url = f"{firebase_url}/users/{self.user_email}/time_settings.json"
             
             response = requests.get(settings_url, timeout=10)
             if response.status_code == 200:
                 return response.json()
         except Exception as e:
-            self.log(f"설정 로드 오류: {e}")
+            self.log(f"?�정 로드 ?�류: {e}")
         return None
     
     def load_pools(self):
-        """풀 데이터 로드"""
+        """?� ?�이??로드"""
         try:
-            firebase_url = "https://wint365-date-default-rtdb.asia-southeast1.firebasedatabase.app"
+            firebase_url = "https://wint24-62cd2-default-rtdb.asia-southeast1.firebasedatabase.app"
             pools_url = f"{firebase_url}/users/{self.user_email}/pools.json"
             
             response = requests.get(pools_url, timeout=10)
@@ -119,96 +90,95 @@ class AutoSenderDaemon:
                 if data and 'pools' in data:
                     return data['pools']
         except Exception as e:
-            self.log(f"풀 로드 오류: {e}")
+            self.log(f"?� 로드 ?�류: {e}")
         return None
     
     def load_groups(self):
-        """그룹 데이터 로드"""
+        """그룹 ?�이??로드"""
         try:
-            firebase_url = "https://wint365-date-default-rtdb.asia-southeast1.firebasedatabase.app"
+            firebase_url = "https://wint24-62cd2-default-rtdb.asia-southeast1.firebasedatabase.app"
             groups_url = f"{firebase_url}/users/{self.user_email}/group_selections.json"
             
             response = requests.get(groups_url, timeout=10)
             if response.status_code == 200:
                 return response.json()
         except Exception as e:
-            self.log(f"그룹 로드 오류: {e}")
+            self.log(f"그룹 로드 ?�류: {e}")
         return None
     
     def load_messages(self):
-        """메시지 데이터 로드"""
+        """메시지 ?�이??로드"""
         try:
-            firebase_url = "https://wint365-date-default-rtdb.asia-southeast1.firebasedatabase.app"
+            firebase_url = "https://wint24-62cd2-default-rtdb.asia-southeast1.firebasedatabase.app"
             messages_url = f"{firebase_url}/users/{self.user_email}/forward_messages.json"
             
             response = requests.get(messages_url, timeout=10)
             if response.status_code == 200:
                 return response.json()
         except Exception as e:
-            self.log(f"메시지 로드 오류: {e}")
+            self.log(f"메시지 로드 ?�류: {e}")
         return None
     
     def load_accounts(self):
-        """계정 데이터 로드"""
+        """계정 ?�이??로드"""
         try:
-            firebase_url = "https://wint365-date-default-rtdb.asia-southeast1.firebasedatabase.app"
+            firebase_url = "https://wint24-62cd2-default-rtdb.asia-southeast1.firebasedatabase.app"
             accounts_url = f"{firebase_url}/users/{self.user_email}/selected_accounts.json"
             
             response = requests.get(accounts_url, timeout=10)
             if response.status_code == 200:
                 return response.json()
         except Exception as e:
-            self.log(f"계정 로드 오류: {e}")
+            self.log(f"계정 로드 ?�류: {e}")
         return None
     
     def run(self):
-        """데몬 메인 루프"""
+        """?�몬 메인 루프"""
         self.log("=" * 60)
-        self.log("🚀 자동전송 데몬 시작")
-        self.log(f"사용자: {self.user_email}")
+        self.log("?? ?�동?�송 ?�몬 ?�작")
+        self.log(f"?�용?? {self.user_email}")
         self.log("=" * 60)
         
-        # 무한 루프 - DMA 상태 확인
+        # 무한 루프 - DMA ?�태 ?�인
         while True:
             try:
-                # DMA에서 상태 확인
+                # DMA?�서 ?�태 ?�인
                 should_run = self.check_firebase_status()
                 
                 if should_run and not self.is_running:
-                    # 시작
-                    self.log("📱 DMA 상태: ON - 자동전송 시작")
+                    # ?�작
+                    self.log("?�� DMA ?�태: ON - ?�동?�송 ?�작")
                     self.is_running = True
-                    # 별도 스레드에서 실행
+                    # 별도 ?�레?�에???�행
                     import threading
                     thread = threading.Thread(target=self.run_auto_send, daemon=True)
                     thread.start()
                 elif not should_run and self.is_running:
-                    # 중지
-                    self.log("🛑 DMA 상태: OFF - 자동전송 중지")
+                    # 중�?
+                    self.log("?�� DMA ?�태: OFF - ?�동?�송 중�?")
                     self.is_running = False
                 
-                # 5초마다 상태 확인
-                time.sleep(5)
+                # 5분마???�태 ?�인 (Firebase ?�용???�??줄이�?
+                time.sleep(300)
                 
             except KeyboardInterrupt:
-                self.log("중지 신호 수신 - 종료")
+                self.log("중�? ?�호 ?�신 - 종료")
                 self.is_running = False
                 break
             except Exception as e:
-                self.log(f"데몬 오류: {e}")
-                time.sleep(10)  # 오류 시 10초 대기
-    
+                self.log(f"?�몬 ?�류: {e}")
+                time.sleep(10)  # ?�류 ??10�??��?    
     def run_auto_send(self):
-        """자동 전송 실행"""
+        """?�동 ?�송 ?�행"""
         try:
-            # 데이터 로드
+            # ?�이??로드
             settings = self.load_settings()
             pools = self.load_pools()
             groups = self.load_groups()
             messages = self.load_messages()
             accounts = self.load_accounts()
             
-            # 초기 설정
+            # 초기 ?�정
             group_interval = 10
             pool_interval = 300
             pool_order = []
@@ -221,15 +191,16 @@ class AutoSenderDaemon:
             # 무한 루프
             cycle_count = 0
             while self.is_running:
-                # DMA 상태 계속 확인
-                if not self.check_firebase_status():
-                    self.log("DMA에서 OFF 신호 받음 - 중지")
-                    self.is_running = False
-                    break
+                # DMA ?�태 계속 ?�인 (30초마?�만)
+                if cycle_count % 30 == 0:
+                    if not self.check_firebase_status():
+                        self.log("DMA?�서 OFF ?�호 받음 - 중�?")
+                        self.is_running = False
+                        break
                 
-                # 데이터 새로고침 (100 사이클마다)
-                if cycle_count % 100 == 0:
-                    self.log(f"데이터 새로고침 (사이클: {cycle_count})")
+                # ?�이???�로고침 (1000 ?�이?�마??- Firebase ?�용???�??줄이�?
+                if cycle_count % 1000 == 0:
+                    self.log(f"?�이???�로고침 (?�이?? {cycle_count})")
                     settings = self.load_settings()
                     pools = self.load_pools()
                     groups = self.load_groups()
@@ -242,11 +213,11 @@ class AutoSenderDaemon:
                         pool_order = self.create_pool_order(pools)
                 
                 if not pool_order:
-                    self.log("풀 순서가 비어있습니다. 데이터 대기 중...")
+                    self.log("?� ?�서가 비어?�습?�다. ?�이???��?�?..")
                     time.sleep(10)
                     continue
                 
-                # 풀별로 구분하여 전송
+                # ?�별로 구분?�여 ?�송
                 previous_pool = None
                 for i, pool_info in enumerate(pool_order):
                     if not self.is_running:
@@ -255,56 +226,55 @@ class AutoSenderDaemon:
                     pool_name = pool_info['pool_name']
                     account_phone = pool_info['account_phone']
                     
-                    # 풀이 바뀌면 풀 간 대기 (풀1 전체 완료 후 풀2 시작 전에 대기)
+                    # ?�??바뀌면 ?� �??��?(?�1 ?�체 ?�료 ???�2 ?�작 ?�에 ?��?
                     if previous_pool is not None and previous_pool != pool_name:
                         if pool_interval > 0:
                             minutes = pool_interval // 60
                             seconds = pool_interval % 60
                             if minutes > 0:
-                                self.log(f"⏳ 풀 간 대기시간: {minutes}분 {seconds}초 남음")
+                                self.log(f"???� �??�기시�? {minutes}�?{seconds}�??�음")
                             else:
-                                self.log(f"⏳ 풀 간 대기시간: {seconds}초 남음")
+                                self.log(f"???� �??�기시�? {seconds}�??�음")
                             
-                            # 중지 가능하도록 짧은 단위로 대기
-                            waited = 0
+                            # 중�? 가?�하?�록 짧�? ?�위�??��?                            waited = 0
                             while waited < pool_interval and self.is_running:
                                 time.sleep(1)
                                 waited += 1
-                                # 남은 시간 로그 (10초마다)
+                                # ?��? ?�간 로그 (10초마??
                                 if waited % 10 == 0:
                                     remaining = pool_interval - waited
                                     minutes = remaining // 60
                                     seconds = remaining % 60
                                     if minutes > 0:
-                                        self.log(f"⏱️ 대기 중... 남은 시간: {minutes}분 {seconds}초")
+                                        self.log(f"?�️ ?��?�?.. ?��? ?�간: {minutes}�?{seconds}�?)
                                     else:
-                                        self.log(f"⏱️ 대기 중... 남은 시간: {seconds}초")
+                                        self.log(f"?�️ ?��?�?.. ?��? ?�간: {seconds}�?)
                     
-                    self.log(f"📦 풀 {pool_name} 계정 {account_phone} 시작")
+                    self.log(f"?�� ?� {pool_name} 계정 {account_phone} ?�작")
                     
                     account = self.find_account(accounts, account_phone)
                     if not account:
-                        self.log(f"⚠️ 계정 {account_phone}을 찾을 수 없습니다.")
+                        self.log(f"?�️ 계정 {account_phone}??찾을 ???�습?�다.")
                         previous_pool = pool_name
                         continue
                     
                     account_groups = self.get_account_groups(groups, account_phone)
                     if not account_groups:
-                        self.log(f"⚠️ 계정 {account_phone}의 그룹이 없습니다.")
+                        self.log(f"?�️ 계정 {account_phone}??그룹???�습?�다.")
                         previous_pool = pool_name
                         continue
                     
-                    self.log(f"📋 총 {len(account_groups)}개 그룹에 메시지 전송")
+                    self.log(f"?�� �?{len(account_groups)}�?그룹??메시지 ?�송")
                     
                     success = self.send_messages_to_groups(
                         account, account_groups, messages, group_interval
                     )
                     
                     if success:
-                        self.log(f"✅ 풀 {pool_name} 계정 {account_phone} 완료")
+                        self.log(f"???� {pool_name} 계정 {account_phone} ?�료")
                     else:
-                        self.log(f"❌ 풀 {pool_name} 계정 {account_phone} 전송 실패")
-                        self.log(f"⚠️ 계정 블락/정지 가능성으로 자동전송 즉시 중단")
+                        self.log(f"???� {pool_name} 계정 {account_phone} ?�송 ?�패")
+                        self.log(f"?�️ 계정 블락/?��? 가?�성?�로 ?�동?�송 즉시 중단")
                         self.is_running = False
                         break
                     
@@ -313,17 +283,16 @@ class AutoSenderDaemon:
                 cycle_count += 1
                         
         except Exception as e:
-            self.log(f"자동 전송 오류: {e}")
+            self.log(f"?�동 ?�송 ?�류: {e}")
             import traceback
             traceback.print_exc()
             self.is_running = False
     
     def create_pool_order(self, pools):
-        """풀 전체 계정 완료 방식 순서 생성"""
+        """?� ?�체 계정 ?�료 방식 ?�서 ?�성"""
         pool_order = []
         
-        # 각 풀의 모든 계정을 먼저 처리하고 다음 풀로
-        for pool_name, accounts in pools.items():
+        # �??�??모든 계정??먼�? 처리?�고 ?�음 ?��?        for pool_name, accounts in pools.items():
             for account_phone in accounts:
                 pool_order.append({
                     'pool_name': pool_name,
@@ -345,7 +314,7 @@ class AutoSenderDaemon:
         return None
     
     def get_account_groups(self, groups, account_phone):
-        """계정의 그룹 목록 가져오기"""
+        """계정??그룹 목록 가?�오�?""
         account_groups = []
         if isinstance(groups, dict):
             for group_id, group_data in groups.items():
@@ -360,20 +329,20 @@ class AutoSenderDaemon:
         return account_groups
     
     def send_messages_to_groups(self, account, groups, messages, group_interval):
-        """그룹들에 메시지 전송"""
+        """그룹?�에 메시지 ?�송"""
         try:
             if not self.is_running:
                 return False
             
             account_messages = self.get_account_messages(messages, account['phone'])
             if not account_messages:
-                self.log(f"계정 {account.get('phone')}에 대한 메시지가 없습니다.")
+                self.log(f"계정 {account.get('phone')}???�??메시지가 ?�습?�다.")
                 return False
             
             if not self.is_running:
                 return False
             
-            # 텔레그램 클라이언트 생성
+            # ?�레그램 ?�라?�언???�성
             session_data = base64.b64decode(account['sessionData'])
             temp_session = tempfile.NamedTemporaryFile(delete=False, suffix='.session')
             temp_session.write(session_data)
@@ -383,7 +352,7 @@ class AutoSenderDaemon:
             api_id = account['apiId']
             api_hash = account['apiHash']
             
-            # 비동기로 전송
+            # 비동기로 ?�송
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
@@ -398,23 +367,23 @@ class AutoSenderDaemon:
                 loop.close()
                 
         except Exception as e:
-            self.log(f"메시지 전송 오류: {e}")
+            self.log(f"메시지 ?�송 ?�류: {e}")
             import traceback
             traceback.print_exc()
             return True
     
     async def send_messages_async(self, session_path, api_id, api_hash, groups, messages, group_interval):
-        """비동기로 메시지 전송"""
+        """비동기로 메시지 ?�송"""
         client = TelegramClient(session_path, api_id, api_hash)
         max_retries = 3
         
         for retry in range(max_retries):
             try:
                 await client.connect()
-                self.log(f"텔레그램 연결 성공 (시도 {retry + 1}/{max_retries})")
+                self.log(f"?�레그램 ?�결 ?�공 (?�도 {retry + 1}/{max_retries})")
                 break
             except Exception as connect_error:
-                self.log(f"연결 실패 (시도 {retry + 1}/{max_retries}): {connect_error}")
+                self.log(f"?�결 ?�패 (?�도 {retry + 1}/{max_retries}): {connect_error}")
                 if retry < max_retries - 1:
                     await asyncio.sleep(5)
                 else:
@@ -431,18 +400,17 @@ class AutoSenderDaemon:
                 if not group_id:
                     continue
                 
-                # 대기 중인 그룹인지 확인
+                # ?��?중인 그룹?��? ?�인
                 if group_id in self.group_wait_times:
                     wait_until = self.group_wait_times[group_id]
                     current_time = time.time()
                     if current_time < wait_until:
                         wait_seconds = int(wait_until - current_time)
-                        self.log(f"⏸️ 그룹 '{group_title}' 슬로우 모드 대기 중... ({wait_seconds}초 남음)")
+                        self.log(f"?�️ 그룹 '{group_title}' ?�로??모드 ?��?�?.. ({wait_seconds}�??�음)")
                         continue
                     else:
-                        # 대기 시간 지남
-                        del self.group_wait_times[group_id]
-                        self.log(f"✅ 그룹 '{group_title}' 슬로우 모드 해제 - 전송 재개")
+                        # ?��??�간 지??                        del self.group_wait_times[group_id]
+                        self.log(f"??그룹 '{group_title}' ?�로??모드 ?�제 - ?�송 ?�개")
                 
                 message_count = 0
                 for message_data in messages:
@@ -467,51 +435,51 @@ class AutoSenderDaemon:
                         )
                         
                         message_count += 1
-                        self.log(f"✅ 메시지 전달 성공: {channel_title} -> {group_title}")
+                        self.log(f"??메시지 ?�달 ?�공: {channel_title} -> {group_title}")
                         
                     except Exception as e:
-                        # 무시해도 되는 오류들 (이미지/비디오 포함 메시지는 정상 전송됨)
+                        # 무시?�도 ?�는 ?�류??(?��?지/비디???�함 메시지???�상 ?�송??
                         if "TypeNotFoundError" in str(type(e).__name__):
                             message_count += 1
-                            self.log(f"⚠️ 메시지 전달 경고 (무시됨): {str(e)[:50]}")
+                            self.log(f"?�️ 메시지 ?�달 경고 (무시??: {str(e)[:50]}")
                             continue
                         error_str = str(e)
-                        # FloodWait 에러 처리
+                        # FloodWait ?�러 처리
                         if "FLOOD_WAIT" in error_str or "flood" in error_str.lower():
                             try:
-                                # 에러 메시지에서 대기 시간 추출
+                                # ?�러 메시지?�서 ?��??�간 추출
                                 import re
                                 wait_match = re.search(r'(\d+)', error_str)
                                 if wait_match:
                                     wait_seconds = int(wait_match.group(1))
-                                    # 약간의 여유 시간 추가
+                                    # ?�간???�유 ?�간 추�?
                                     wait_until = time.time() + wait_seconds + 5
                                     self.group_wait_times[group_id] = wait_until
-                                    self.log(f"⚠️ 그룹 '{group_title}' 슬로우 모드 활성화 - {wait_seconds}초 대기")
+                                    self.log(f"?�️ 그룹 '{group_title}' ?�로??모드 ?�성??- {wait_seconds}�??��?)
                                 else:
-                                    # 기본 대기 시간 (60초)
+                                    # 기본 ?��??�간 (60�?
                                     wait_until = time.time() + 60
                                     self.group_wait_times[group_id] = wait_until
-                                    self.log(f"⚠️ 그룹 '{group_title}' 슬로우 모드 활성화 - 60초 대기")
+                                    self.log(f"?�️ 그룹 '{group_title}' ?�로??모드 ?�성??- 60�??��?)
                             except:
-                                # 기본 대기 시간 (60초)
+                                # 기본 ?��??�간 (60�?
                                 wait_until = time.time() + 60
                                 self.group_wait_times[group_id] = wait_until
-                                self.log(f"⚠️ 그룹 '{group_title}' 슬로우 모드 활성화 - 60초 대기")
+                                self.log(f"?�️ 그룹 '{group_title}' ?�로??모드 ?�성??- 60�??��?)
                         else:
-                            self.log(f"❌ 메시지 전달 실패 ({channel_title} -> {group_title}): {e}")
+                            self.log(f"??메시지 ?�달 ?�패 ({channel_title} -> {group_title}): {e}")
                 
                 if message_count > 0:
-                    self.log(f"✅ 그룹 '{group_title}'에 {message_count}개 메시지 전송 성공")
+                    self.log(f"??그룹 '{group_title}'??{message_count}�?메시지 ?�송 ?�공")
                 
                 if group_interval > 0:
-                    self.log(f"⏳ 다음 그룹 전송 대기시간: {group_interval}초")
+                    self.log(f"???�음 그룹 ?�송 ?�기시�? {group_interval}�?)
                     waited = 0
                     while waited < group_interval and self.is_running:
                         await asyncio.sleep(1)
                         waited += 1
                 else:
-                    self.log(f"⏳ 다음 그룹으로 이동...")
+                    self.log(f"???�음 그룹?�로 ?�동...")
             
             await client.disconnect()
             return True
@@ -521,11 +489,11 @@ class AutoSenderDaemon:
                 await client.disconnect()
             except:
                 pass
-            self.log(f"전송 오류: {e}")
+            self.log(f"?�송 ?�류: {e}")
             return False
     
     def get_account_messages(self, messages, account_phone):
-        """계정의 메시지 목록 가져오기"""
+        """계정??메시지 목록 가?�오�?""
         account_messages = []
         
         if isinstance(messages, dict):
@@ -557,37 +525,38 @@ class AutoSenderDaemon:
         return account_messages
     
     def cleanup_temp_files(self):
-        """임시 파일 정리"""
+        """?�시 ?�일 ?�리"""
         for temp_file in self.temp_files:
             try:
                 import os
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
             except Exception as e:
-                self.log(f"파일 삭제 오류: {e}")
+                self.log(f"?�일 ??�� ?�류: {e}")
         self.temp_files = []
 
 
 def main():
-    """메인 함수"""
-    # 사용자 이메일 확인
+    """메인 ?�수"""
+    # ?�용???�메???�인
     if len(sys.argv) < 2:
-        print("사용법: python auto_sender_daemon.py <user_email>")
+        print("?�용�? python auto_sender_daemon.py <user_email>")
         sys.exit(1)
     
     user_email = sys.argv[1]
     print(f"DEBUG: user_email = {user_email}")
     sys.stdout.flush()
     
-    print("DEBUG: AutoSenderDaemon 인스턴스 생성 중...")
+    print("DEBUG: AutoSenderDaemon ?�스?�스 ?�성 �?..")
     sys.stdout.flush()
     daemon = AutoSenderDaemon(user_email)
     
-    print("DEBUG: daemon.run() 호출 중...")
+    print("DEBUG: daemon.run() ?�출 �?..")
     sys.stdout.flush()
     daemon.run()
 
 
 if __name__ == "__main__":
     main()
+
 
