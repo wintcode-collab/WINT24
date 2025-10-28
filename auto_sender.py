@@ -169,104 +169,21 @@ class AutoSender:
                 pool_interval = int(settings.get('pool_interval_minutes', 5)) * 60
                 pool_order = self.create_pool_order(pools)
             
-            # 무한 루프 (절대 중간에 끊기지 않음)
-            cycle_count = 0
+            # 각 풀을 독립적으로 무한 루프로 실행
+            pool_threads = []
+            for idx, (pool_name, pool_accounts) in enumerate(pool_order.items()):
+                # 각 풀을 별도 스레드로 실행
+                thread = threading.Thread(
+                    target=self.run_pool_cycle,
+                    args=(pool_name, pool_accounts, idx * pool_interval, accounts, groups, messages, group_interval),
+                    daemon=True
+                )
+                thread.start()
+                pool_threads.append(thread)
+            
+            # 모든 풀이 중지될 때까지 대기
             while self.is_running:
-                # 주기적으로 데이터 다시 로드 (100 사이클마다)
-                if cycle_count % 100 == 0:
-                    print(f"데이터 새로고침 (사이클: {cycle_count})")
-                    settings = self.load_settings()
-                    pools = self.load_pools()
-                    groups = self.load_groups()
-                    messages = self.load_messages()
-                    accounts = self.load_accounts()
-                    
-                    if not all([settings, pools, groups, messages, accounts]):
-                        print("데이터 로드 실패, 기존 데이터로 계속 진행")
-                    else:
-                        # 설정 값 업데이트
-                        group_interval = int(settings.get('group_interval_seconds', 10))
-                        pool_interval = int(settings.get('pool_interval_minutes', 5)) * 60
-                        print(f"설정 업데이트: 그룹간격={group_interval}초, 풀간격={pool_interval}초")
-                        
-                        # 새로운 풀 순서 생성
-                        pool_order = self.create_pool_order(pools)
-                        cycle_count = 0  # 카운터 리셋
-                
-                # pool_order가 비어있어도 계속 실행
-                if not pool_order:
-                    print("풀 순서가 비어있습니다. 데이터를 기다립니다...")
-                    time.sleep(10)  # 10초 대기 후 다시 시도
-                    continue
-                
-                # 풀별로 구분하여 전송
-                previous_pool = None
-                for i, pool_info in enumerate(pool_order):
-                    if not self.is_running:
-                        break
-                    
-                    pool_name = pool_info['pool_name']
-                    account_phone = pool_info['account_phone']
-                    
-                    # 풀이 바뀌면 풀 간 대기 (풀1 전체 완료 후 풀2 시작 전에 대기)
-                    if previous_pool is not None and previous_pool != pool_name:
-                        if pool_interval > 0:
-                            minutes = pool_interval // 60
-                            seconds = pool_interval % 60
-                            if minutes > 0:
-                                self.log(f"⏳ 풀 간 대기시간: {minutes}분 {seconds}초 남음")
-                            else:
-                                self.log(f"⏳ 풀 간 대기시간: {seconds}초 남음")
-                            
-                            # 중지 가능하도록 짧은 단위로 대기
-                            waited = 0
-                            while waited < pool_interval and self.is_running:
-                                time.sleep(1)
-                                waited += 1
-                                # 남은 시간 로그 (10초마다)
-                                if waited % 10 == 0:
-                                    remaining = pool_interval - waited
-                                    minutes = remaining // 60
-                                    seconds = remaining % 60
-                                    if minutes > 0:
-                                        self.log(f"⏱️ 대기 중... 남은 시간: {minutes}분 {seconds}초")
-                                    else:
-                                        self.log(f"⏱️ 대기 중... 남은 시간: {seconds}초")
-                    
-                    self.log(f"📦 풀 {pool_name} 계정 {account_phone} 시작")
-                    
-                    # 계정 찾기
-                    account = self.find_account(accounts, account_phone)
-                    if not account:
-                        self.log(f"⚠️ 계정 {account_phone}을 찾을 수 없습니다.")
-                        previous_pool = pool_name
-                        continue
-                    
-                    # 해당 계정의 그룹 찾기
-                    account_groups = self.get_account_groups(groups, account_phone)
-                    if not account_groups:
-                        self.log(f"⚠️ 계정 {account_phone}의 그룹이 없습니다.")
-                        previous_pool = pool_name
-                        continue
-                    
-                    self.log(f"📋 총 {len(account_groups)}개 그룹에 메시지 전송")
-                    
-                    # 메시지 전송
-                    success = self.send_messages_to_groups(
-                        account, account_groups, messages, group_interval
-                    )
-                    
-                    if success:
-                        self.log(f"✅ 풀 {pool_name} 계정 {account_phone} 완료")
-                    else:
-                        self.log(f"❌ 풀 {pool_name} 계정 {account_phone} 전송 실패")
-                        self.log(f"⚠️ 계정 블락/정지 가능성으로 자동전송 즉시 중단")
-                        self.is_running = False
-                        break
-                    
-                    previous_pool = pool_name
-                
-                cycle_count += 1
+                time.sleep(1)
                         
         except Exception as e:
             print(f"자동 전송 오류: {e}")
@@ -285,19 +202,121 @@ class AutoSender:
                     pass
                 # 상태 콜백은 이미 stop_auto_send에서 호출됨
     
+    def run_pool_cycle(self, pool_name, pool_accounts, start_delay, accounts, groups, messages, group_interval):
+        """각 풀을 독립적으로 무한 루프로 실행"""
+        # 시작 대기 (풀2는 5분 대기)
+        if start_delay > 0:
+            self.log(f"⏳ {pool_name} 시작 대기 중... ({start_delay//60}분)")
+            waited = 0
+            while waited < start_delay and self.is_running:
+                time.sleep(1)
+                waited += 1
+                if waited % 10 == 0:
+                    remaining = start_delay - waited
+                    self.log(f"⏱️ {pool_name} 대기 중... {remaining//60}분 {remaining%60}초 남음")
+        
+        # 계정들을 그룹으로 나누어 처리
+        # 패턴: 계정 1,2,3,4 (4개)일 때
+        # Group 0: [0] - 계정1
+        # Group 1: [1, 2] - 계정2,3 (동시)
+        # Group 2: [3, 0] - 계정4와 계정1 (동시)
+        # Group 3: [1, 2] - 계정2,3 (동시)
+        # Group 4: [3, 0] - 계정4와 계정1 (동시)
+        # ... 반복
+        
+        account_count = len(pool_accounts)
+        if account_count == 0:
+            self.log(f"⚠️ {pool_name}에 계정이 없습니다.")
+            return
+        
+        # 무한 루프로 풀 실행
+        while self.is_running:
+            try:
+                # Group 0: 계정1만 처리
+                self.log(f"📦 {pool_name} 계정1 전송 시작")
+                idx = 0
+                account_data = pool_accounts[idx]
+                
+                if isinstance(account_data, dict):
+                    account_phone = account_data.get('account', account_data)
+                else:
+                    account_phone = account_data
+                
+                account = self.find_account(accounts, account_phone)
+                if account:
+                    account_groups_list = self.get_account_groups(groups, account_phone)
+                    if account_groups_list:
+                        self.send_account_messages(pool_name, account, account_groups_list, messages, group_interval, 1)
+                
+                if not self.is_running:
+                    break
+                
+                # 이후 계정2,3과 계정4,1을 번갈아 반복
+                group_sequence = 1  # 홀수: 계정2,3 / 짝수: 계정4,1
+                
+                while self.is_running:
+                    if group_sequence % 2 == 1:  # 계정2,3 (홀수)
+                        self.log(f"📦 {pool_name} 계정2,3 전송 시작")
+                        current_groups = [1, 2] if account_count >= 3 else [1]
+                    else:  # 계정4,1 (짝수)
+                        self.log(f"📦 {pool_name} 계정4,1 전송 시작")
+                        current_groups = [3, 0] if account_count >= 4 else []
+                    
+                    if not current_groups:
+                        break
+                    
+                    # 그룹 내 계정들을 동시 처리
+                    import threading
+                    threads = []
+                    
+                    for idx in current_groups:
+                        if idx >= len(pool_accounts):
+                            continue
+                        
+                        account_data = pool_accounts[idx]
+                        
+                        if isinstance(account_data, dict):
+                            account_phone = account_data.get('account', account_data)
+                        else:
+                            account_phone = account_data
+                        
+                        account = self.find_account(accounts, account_phone)
+                        if not account:
+                            continue
+                        
+                        account_groups_list = self.get_account_groups(groups, account_phone)
+                        if not account_groups_list:
+                            continue
+                        
+                        thread = threading.Thread(
+                            target=self.send_account_messages,
+                            args=(pool_name, account, account_groups_list, messages, group_interval, idx + 1),
+                            daemon=True
+                        )
+                        thread.start()
+                        threads.append(thread)
+                    
+                    # 모든 계정이 완료될 때까지 대기
+                    for thread in threads:
+                        thread.join()
+                    
+                    group_sequence += 1
+                
+            except Exception as e:
+                self.log(f"❌ {pool_name} 사이클 오류: {e}")
+                import traceback
+                traceback.print_exc()
+                # 오류 발생해도 계속 진행
+                time.sleep(5)  # 5초 대기 후 재시도
+    
     def create_pool_order(self, pools):
-        """풀 전체 계정 완료 방식 순서 생성"""
-        pool_order = []
-        
-        # 각 풀의 모든 계정을 먼저 처리하고 다음 풀로
+        """풀별 계정 목록 생성 (각 풀 독립적으로 처리)"""
+        # 풀별로 계정 목록 분리
+        pool_accounts = {}
         for pool_name, accounts in pools.items():
-            for account_phone in accounts:
-                pool_order.append({
-                    'pool_name': pool_name,
-                    'account_phone': account_phone
-                })
+            pool_accounts[pool_name] = accounts
         
-        return pool_order
+        return pool_accounts
     
     def find_account(self, accounts, phone):
         """계정 찾기"""
@@ -312,19 +331,33 @@ class AutoSender:
         return None
     
     def get_account_groups(self, groups, account_phone):
-        """계정의 그룹 목록 가져오기"""
+        """계정의 그룹 목록 가져오기 (Firebase에 저장된 순서대로)"""
         account_groups = []
         if isinstance(groups, dict):
-            for group_id, group_data in groups.items():
-                if group_data.get('account_phone') == account_phone:
-                    # selected_groups 배열에서 각 그룹 정보 가져오기
-                    selected_groups = group_data.get('selected_groups', [])
+            # account_phone을 키로 사용하여 해당 계정의 데이터 찾기
+            account_data = groups.get(account_phone)
+            if account_data and isinstance(account_data, dict):
+                # selected_groups 가져오기
+                selected_groups = account_data.get('selected_groups', [])
+                
+                # selected_groups가 객체 (딕셔너리)인 경우 리스트로 변환
+                if isinstance(selected_groups, dict):
+                    # Firebase 객체를 리스트로 변환 (키를 숫자로 정렬, 문자열 "0", "1", "2" 등)
+                    sorted_keys = sorted(selected_groups.keys(), key=lambda x: int(x) if x.isdigit() else 999999)
+                    selected_groups = [selected_groups[key] for key in sorted_keys]
+                    print(f"[DEBUG] selected_groups keys: {sorted_keys}")
+                elif not isinstance(selected_groups, list):
+                    selected_groups = []
+                
+                # selected_groups 리스트에서 각 그룹 정보 가져오기 (순서대로)
+                if selected_groups:
                     for group in selected_groups:
-                        account_groups.append({
-                            'id': group.get('id'),
-                            'group_id': group.get('id'),  # id를 group_id로도 설정
-                            'title': group.get('title', 'Unknown')
-                        })
+                        if isinstance(group, dict):
+                            account_groups.append({
+                                'id': group.get('id'),
+                                'group_id': group.get('id'),  # id를 group_id로도 설정
+                                'title': group.get('title', 'Unknown')
+                            })
         return account_groups
     
     def send_messages_to_groups(self, account, groups, messages, group_interval):
@@ -475,18 +508,15 @@ class AutoSender:
         """계정의 메시지 목록 가져오기"""
         account_messages = []
         
+        # 계정 전화번호 정규화
+        phone_key = account_phone.replace('+', '').replace(' ', '').replace('-', '')
+        
         if isinstance(messages, dict):
-            for msg_id, msg_data in messages.items():
-                # msg_data가 문자열인 경우 처리
-                if isinstance(msg_data, str):
-                    continue
-                
-                if not isinstance(msg_data, dict):
-                    continue
-                
-                if msg_data.get('account_phone') == account_phone:
+            # 모든 항목을 순회하면서 account_phone으로 필터링
+            for key, data in messages.items():
+                if isinstance(data, dict) and data.get('account_phone', '').replace('+', '').replace(' ', '').replace('-', '') == phone_key:
                     # selected_messages 배열을 가져오기
-                    selected_messages = msg_data.get('selected_messages', [])
+                    selected_messages = data.get('selected_messages', [])
                     
                     # 각 메시지에 대한 정보 구성
                     for msg in selected_messages:
@@ -505,6 +535,7 @@ class AutoSender:
                                 'message_id': message_id,
                                 'channel_title': group_title
                             })
+                    break
         
         return account_messages
     
