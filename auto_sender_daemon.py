@@ -620,15 +620,21 @@ class AutoSenderDaemon:
             if account_data and isinstance(account_data, dict):
                 # selected_messages 가져오기
                 selected_messages = account_data.get('selected_messages', [])
+                self.log(f"🔍 selected_messages 타입: {type(selected_messages)}, 값: {selected_messages}")
                 
                 # selected_messages가 객체 (딕셔너리)인 경우 리스트로 변환
                 if isinstance(selected_messages, dict):
                     # Firebase 객체를 리스트로 변환
                     sorted_keys = sorted(selected_messages.keys(), key=lambda x: int(x) if x.isdigit() else 999999)
+                    self.log(f"📋 sorted_keys: {sorted_keys}")
                     selected_messages = [selected_messages[key] for key in sorted_keys]
+                    self.log(f"📋 selected_messages 변환 완료: {len(selected_messages)}개")
+                elif isinstance(selected_messages, list):
+                    self.log(f"✅ selected_messages는 이미 리스트: {len(selected_messages)}개")
                 
                 # selected_messages 리스트에서 각 메시지 정보 가져오기
                 if selected_messages and isinstance(selected_messages, list):
+                    self.log(f"📋 selected_messages 개수: {len(selected_messages)}")
                     for msg in selected_messages:
                         if isinstance(msg, dict):
                             # Firebase 구조: group_id, id (메시지 ID), group_title
@@ -642,6 +648,7 @@ class AutoSenderDaemon:
                                     'message_id': message_id,
                                     'channel_title': group_title
                                 })
+                    self.log(f"✅ 최종 account_messages 개수: {len(account_messages)}")
         
         return account_messages
     
