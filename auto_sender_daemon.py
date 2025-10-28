@@ -165,14 +165,32 @@ class AutoSenderDaemon:
             pool_accounts = {}
             
             if all([settings, pools, groups, messages, accounts]):
+                self.log(f"✅ 데이터 로드 완료")
+                self.log(f"  - 설정: {settings is not None}")
+                self.log(f"  - 풀: {pools is not None}")
+                self.log(f"  - 그룹: {groups is not None}")
+                self.log(f"  - 메시지: {messages is not None}")
+                self.log(f"  - 계정: {accounts is not None}")
                 group_interval = int(settings.get('group_interval_seconds', 10))
                 pool_interval = int(settings.get('pool_interval_minutes', 5)) * 60
                 pool_accounts = self.create_pool_order(pools)
+                self.log(f"📊 풀 순서: {list(pool_accounts.keys())}")
+            else:
+                self.log(f"⚠️ 데이터 누락 - 설정:{settings is not None}, 풀:{pools is not None}, 그룹:{groups is not None}, 메시지:{messages is not None}, 계정:{accounts is not None}")
             
             # 각 풀을 독립적으로 무한 루프로 실행
             import threading
             pool_threads = []
+            
+            if not pool_accounts:
+                self.log("⚠️ 풀 데이터가 없습니다.")
+                return
+                
             for idx, (pool_name, pool_accounts_list) in enumerate(pool_accounts.items()):
+                if not pool_accounts_list:
+                    self.log(f"⚠️ {pool_name}에 계정이 없습니다.")
+                    continue
+                    
                 # 각 풀을 별도 스레드로 실행
                 thread = threading.Thread(
                     target=self.run_pool_cycle,
@@ -211,6 +229,10 @@ class AutoSenderDaemon:
                     self.log(f"⏱️ {pool_name} 대기 중... {remaining//60}분 {remaining%60}초 남음")
         
         # 계정들을 그룹으로 나누어 처리
+        if not pool_accounts:
+            self.log(f"⚠️ {pool_name}에 계정 목록이 없습니다.")
+            return
+            
         account_count = len(pool_accounts)
         if account_count == 0:
             self.log(f"⚠️ {pool_name}에 계정이 없습니다.")
@@ -222,14 +244,28 @@ class AutoSenderDaemon:
                 # Group 0: 계정1만 처리
                 self.log(f"📦 {pool_name} 계정1 전송 시작")
                 idx = 0
+                
+                # 범위 체크
+                if idx >= len(pool_accounts):
+                    self.log(f"⚠️ {pool_name}에 계정이 없습니다.")
+                    break
+                
                 account_data = pool_accounts[idx]
+                if not account_data:
+                    self.log(f"⚠️ {pool_name} 계정{idx+1} 데이터가 없습니다.")
+                    break
                 
                 if isinstance(account_data, dict):
                     account_phone = account_data.get('account', account_data)
                 else:
                     account_phone = account_data
                 
+                self.log(f"🔍 계정 찾기: {account_phone}")
                 account = self.find_account(accounts, account_phone)
+                if account:
+                    self.log(f"✅ 계정 찾음: {account.get('phone')}")
+                else:
+                    self.log(f"❌ 계정을 찾을 수 없음: {account_phone}")
                 if account:
                     account_groups_list = self.get_account_groups(groups, account_phone)
                     if account_groups_list:
@@ -261,6 +297,8 @@ class AutoSenderDaemon:
                             continue
                         
                         account_data = pool_accounts[idx]
+                        if not account_data:
+                            continue
                         
                         if isinstance(account_data, dict):
                             account_phone = account_data.get('account', account_data)
@@ -299,6 +337,14 @@ class AutoSenderDaemon:
     def send_account_messages(self, pool_name, account, account_groups, messages, group_interval, account_order):
         """계정별 메시지 전송"""
         try:
+            if not account:
+                self.log(f"⚠️ {pool_name} 계정{account_order} 정보가 없습니다.")
+                return False
+                
+            if not account_groups:
+                self.log(f"⚠️ {pool_name} 계정{account_order}의 그룹이 없습니다.")
+                return False
+                
             self.log(f"📋 {pool_name} 계정{account_order}: {len(account_groups)}개 그룹에 메시지 전송")
             success = self.send_messages_to_groups(account, account_groups, messages, group_interval)
             if success:
@@ -317,26 +363,36 @@ class AutoSenderDaemon:
         """풀별 계정 목록 생성 (각 풀 독립적으로 처리)"""
         # 풀별로 계정 목록 분리
         pool_accounts = {}
+        if not pools:
+            return pool_accounts
+            
         for pool_name, accounts in pools.items():
-            pool_accounts[pool_name] = accounts
+            if accounts:
+                pool_accounts[pool_name] = accounts
         
         return pool_accounts
     
     def find_account(self, accounts, phone):
         """계정 찾기"""
+        if not accounts:
+            return None
+            
         if isinstance(accounts, list):
             for account in accounts:
-                if account.get('phone') == phone:
+                if account and isinstance(account, dict) and account.get('phone') == phone:
                     return account
         elif isinstance(accounts, dict):
             for account in accounts.values():
-                if account.get('phone') == phone:
+                if account and isinstance(account, dict) and account.get('phone') == phone:
                     return account
         return None
     
     def get_account_groups(self, groups, account_phone):
         """계정의 그룹 목록 가져오기 (Firebase에 저장된 순서대로)"""
         account_groups = []
+        if not groups or not account_phone:
+            return account_groups
+            
         if isinstance(groups, dict):
             # account_phone을 키로 사용하여 해당 계정의 데이터 찾기
             account_data = groups.get(account_phone)
@@ -367,7 +423,15 @@ class AutoSenderDaemon:
             if not self.is_running:
                 return False
             
-            account_messages = self.get_account_messages(messages, account['phone'])
+            if not account:
+                self.log(f"⚠️ 계정 정보가 없습니다.")
+                return False
+            
+            if not groups:
+                self.log(f"⚠️ 그룹 목록이 없습니다.")
+                return False
+                
+            account_messages = self.get_account_messages(messages, account.get('phone'))
             if not account_messages:
                 self.log(f"계정 {account.get('phone')}에 대한 메시지가 없습니다.")
                 return False
@@ -530,6 +594,9 @@ class AutoSenderDaemon:
     def get_account_messages(self, messages, account_phone):
         """계정의 메시지 목록 가져오기"""
         account_messages = []
+        
+        if not messages or not account_phone:
+            return account_messages
         
         if isinstance(messages, dict):
             # account_phone을 키로 사용하여 해당 계정의 데이터 찾기
