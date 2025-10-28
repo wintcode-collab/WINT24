@@ -351,9 +351,10 @@ class AutoSenderDaemon:
                 self.log(f"✅ {pool_name} 계정{account_order} 완료")
             else:
                 self.log(f"❌ {pool_name} 계정{account_order} 전송 실패")
-                # 계정 정지 감지됨 - 모든 자동전송 중지
-                self.log(f"⚠️ 계정 {account.get('phone')} 정지로 인해 자동전송 중지")
-                self.is_running = False
+                # 계정 정지 감지됨인 경우만 중지 (메시지 없는 경우 제외)
+                # send_messages_to_groups에서 정지 감지 시 is_running = False 설정됨
+                if not self.is_running:
+                    self.log(f"⚠️ 계정 정지로 인해 자동전송 중지됨")
             return success
         except Exception as e:
             self.log(f"❌ {pool_name} 계정{account_order} 오류: {e}")
@@ -596,11 +597,26 @@ class AutoSenderDaemon:
         account_messages = []
         
         if not messages or not account_phone:
+            self.log(f"⚠️ 메시지 또는 계정 전화번호 없음: messages={messages is not None}, phone={account_phone}")
             return account_messages
         
         if isinstance(messages, dict):
-            # account_phone을 키로 사용하여 해당 계정의 데이터 찾기
-            account_data = messages.get(account_phone)
+            # Firebase의 구조: {랜덤키: {account_phone: "...", selected_messages: [...]}}
+            # account_phone으로 데이터 찾기 (랜덤 키 안의 account_phone 필드 검색)
+            account_data = None
+            for key, data in messages.items():
+                if isinstance(data, dict) and data.get('account_phone') == account_phone:
+                    account_data = data
+                    self.log(f"✅ 계정 {account_phone} 찾음 (키: {key})")
+                    break
+            
+            if not account_data:
+                self.log(f"❌ account_phone {account_phone}에 대한 데이터를 찾을 수 없음")
+                # 전체 구조 로그
+                if messages:
+                    sample_keys = list(messages.keys())[:3]
+                    self.log(f"📋 메시지 데이터 키 샘플: {sample_keys}")
+            
             if account_data and isinstance(account_data, dict):
                 # selected_messages 가져오기
                 selected_messages = account_data.get('selected_messages', [])
@@ -615,9 +631,10 @@ class AutoSenderDaemon:
                 if selected_messages and isinstance(selected_messages, list):
                     for msg in selected_messages:
                         if isinstance(msg, dict):
-                            source_chat_id = msg.get('id')  # group_id가 아니라 id로 저장됨
-                            message_id = msg.get('message_id')
-                            group_title = msg.get('title', 'Unknown')
+                            # Firebase 구조: group_id, id (메시지 ID), group_title
+                            source_chat_id = msg.get('group_id')
+                            message_id = msg.get('id')  # 메시지 ID
+                            group_title = msg.get('group_title', 'Unknown')
                             
                             if source_chat_id and message_id:
                                 account_messages.append({
