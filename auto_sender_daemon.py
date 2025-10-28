@@ -305,6 +305,9 @@ class AutoSenderDaemon:
                 self.log(f"✅ {pool_name} 계정{account_order} 완료")
             else:
                 self.log(f"❌ {pool_name} 계정{account_order} 전송 실패")
+                # 계정 정지 감지됨 - 모든 자동전송 중지
+                self.log(f"⚠️ 계정 {account.get('phone')} 정지로 인해 자동전송 중지")
+                self.is_running = False
             return success
         except Exception as e:
             self.log(f"❌ {pool_name} 계정{account_order} 오류: {e}")
@@ -494,6 +497,12 @@ class AutoSenderDaemon:
                                 self.log(f"⚠️ 그룹 '{group_title}' 슬로우 모드 활성화 - 60초 대기")
                         else:
                             self.log(f"❌ 메시지 전달 실패 ({channel_title} -> {group_title}): {e}")
+                            
+                            # 계정 정지 감지
+                            if any(keyword in error_str.upper() for keyword in ['BANNED', 'RESTRICTED', 'BLOCKED', 'AUTH_KEY_INVALID', 'SESSION_REVOKED']):
+                                self.log(f"⚠️ 계정 정지 감지! 자동전송을 즉시 중지합니다.")
+                                self.is_running = False
+                                return False
                 
                 if message_count > 0:
                     self.log(f"✅ 그룹 '{group_title}'에 {message_count}개 메시지 전송 성공")
