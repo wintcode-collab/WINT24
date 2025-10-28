@@ -481,7 +481,11 @@ class AutoSenderDaemon:
                 self.log(f"텔레그램 연결 성공 (시도 {retry + 1}/{max_retries})")
                 break
             except Exception as connect_error:
-                self.log(f"연결 실패 (시도 {retry + 1}/{max_retries}): {connect_error}")
+                error_msg = str(connect_error)
+                if "TypeNotFoundError" in error_msg or "76bec211" in error_msg or "Constructor ID" in error_msg:
+                    self.log(f"연결 중 프로토콜 오류 (시도 {retry + 1}/{max_retries}) - 무시하고 계속")
+                else:
+                    self.log(f"연결 실패 (시도 {retry + 1}/{max_retries}): {error_msg}")
                 if retry < max_retries - 1:
                     await asyncio.sleep(5)
                 else:
@@ -561,7 +565,11 @@ class AutoSenderDaemon:
                                 self.group_wait_times[group_id] = wait_until
                                 self.log(f"⚠️ 그룹 '{group_title}' 슬로우 모드 활성화 - 60초 대기")
                         else:
-                            self.log(f"❌ 메시지 전달 실패 ({channel_title} -> {group_title}): {e}")
+                            # TypeNotFoundError 등 프로토콜 호환성 오류는 무시
+                            if "TypeNotFoundError" in error_str or "Constructor ID" in error_str or "76bec211" in error_str:
+                                self.log(f"⚠️ {channel_title} -> {group_title}: 프로토콜 호환성 오류 (무시)")
+                            else:
+                                self.log(f"❌ 메시지 전달 실패 ({channel_title} -> {group_title}): {str(e)[:100]}")
                             
                             # 계정 정지 감지
                             if any(keyword in error_str.upper() for keyword in ['BANNED', 'RESTRICTED', 'BLOCKED', 'AUTH_KEY_INVALID', 'SESSION_REVOKED']):
@@ -649,6 +657,9 @@ class AutoSenderDaemon:
                                     'channel_title': group_title
                                 })
                     self.log(f"✅ 최종 account_messages 개수: {len(account_messages)}")
+                    
+                    if len(account_messages) == 0:
+                        self.log(f"⚠️ 경고: account_messages가 비어있습니다!")
         
         return account_messages
     
