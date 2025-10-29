@@ -24,6 +24,8 @@ class AutoSenderDaemon:
         self.is_running = False
         self.temp_files = []
         self.group_wait_times = {}  # {group_id: wait_until_timestamp}
+        import threading
+        self.send_lock = threading.Lock()  # 계정 전송 동시 실행 방지용 락
         
     def log(self, message):
         """로그 출력"""
@@ -37,17 +39,23 @@ class AutoSenderDaemon:
             firebase_url = "https://wint24-62cd2-default-rtdb.asia-southeast1.firebasedatabase.app"
             status_url = f"{firebase_url}/users/{self.user_email}/auto_send_status.json"
             
-            response = requests.get(status_url, timeout=5)
+            # SSL 검증 무시 및 더 긴 타임아웃
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            response = requests.get(status_url, timeout=10, verify=False)
             if response.status_code == 200:
                 status_data = response.json()
                 return status_data and status_data.get('is_running', False)
         except Exception as e:
-            self.log(f"상태 확인 오류: {e}")
+            self.log(f"상태 확인 오류: {str(e)[:200]}")
         return False
     
     def load_settings(self):
         """전송 설정 로드"""
         try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             firebase_url = "https://wint24-62cd2-default-rtdb.asia-southeast1.firebasedatabase.app"
             settings_url = f"{firebase_url}/users/{self.user_email}/time_settings.json"
             
@@ -162,6 +170,8 @@ class AutoSenderDaemon:
             # 초기 설정
             group_interval = 10
             pool_interval = 300
+            account_interval = 10
+            cycle_interval = 1800  # 기본값 (30분)
             pool_accounts = {}
             
             if all([settings, pools, groups, messages, accounts]):
@@ -173,6 +183,8 @@ class AutoSenderDaemon:
                 self.log(f"  - 계정: {accounts is not None}")
                 group_interval = int(settings.get('group_interval_seconds', 10))
                 pool_interval = int(settings.get('pool_interval_minutes', 5)) * 60
+                account_interval = int(settings.get('account_interval_seconds', 10))
+                cycle_interval = int(settings.get('cycle_interval_minutes', 30)) * 60
                 pool_accounts = self.create_pool_order(pools)
                 self.log(f"📊 풀 순서: {list(pool_accounts.keys())}")
             else:
@@ -194,7 +206,7 @@ class AutoSenderDaemon:
                 # 각 풀을 별도 스레드로 실행
                 thread = threading.Thread(
                     target=self.run_pool_cycle,
-                    args=(pool_name, pool_accounts_list, idx * pool_interval, accounts, groups, messages, group_interval),
+                    args=(pool_name, pool_accounts_list, idx * pool_interval, accounts, groups, messages, group_interval, account_interval, cycle_interval),
                     daemon=True
                 )
                 thread.start()
@@ -215,7 +227,7 @@ class AutoSenderDaemon:
             traceback.print_exc()
             self.is_running = False
     
-    def run_pool_cycle(self, pool_name, pool_accounts, start_delay, accounts, groups, messages, group_interval):
+    def run_pool_cycle(self, pool_name, pool_accounts, start_delay, accounts, groups, messages, group_interval, account_interval, cycle_interval):
         """각 풀을 독립적으로 무한 루프로 실행"""
         # 시작 대기 (풀2는 5분 대기)
         if start_delay > 0:
@@ -228,7 +240,6 @@ class AutoSenderDaemon:
                     remaining = start_delay - waited
                     self.log(f"⏱️ {pool_name} 대기 중... {remaining//60}분 {remaining%60}초 남음")
         
-        # 계정들을 그룹으로 나누어 처리
         if not pool_accounts:
             self.log(f"⚠️ {pool_name}에 계정 목록이 없습니다.")
             return
@@ -238,94 +249,67 @@ class AutoSenderDaemon:
             self.log(f"⚠️ {pool_name}에 계정이 없습니다.")
             return
         
-        # 무한 루프로 풀 실행
+        # 계정 수 확인 로그
+        self.log(f"📊 {pool_name}: 총 {account_count}개 계정으로 전송 시작")
+        
+        # 무한 루프로 풀 실행 (순차 전송: 계정1 → 계정2 → 계정3 → 계정4 → 반복)
+        # 계정이 1개여도 정상 작동
+        cycle_count = 0
         while self.is_running:
             try:
-                # Group 0: 계정1만 처리
-                self.log(f"📦 {pool_name} 계정1 전송 시작")
-                idx = 0
+                cycle_count += 1
+                self.log(f"🔄 {pool_name} 사이클 {cycle_count} 시작 (계정 {account_count}개)")
                 
-                # 범위 체크
-                if idx >= len(pool_accounts):
-                    self.log(f"⚠️ {pool_name}에 계정이 없습니다.")
-                    break
-                
-                account_data = pool_accounts[idx]
-                if not account_data:
-                    self.log(f"⚠️ {pool_name} 계정{idx+1} 데이터가 없습니다.")
-                    break
-                
-                if isinstance(account_data, dict):
-                    account_phone = account_data.get('account', account_data)
-                else:
-                    account_phone = account_data
-                
-                self.log(f"🔍 계정 찾기: {account_phone}")
-                account = self.find_account(accounts, account_phone)
-                if account:
-                    self.log(f"✅ 계정 찾음: {account.get('phone')}")
-                else:
-                    self.log(f"❌ 계정을 찾을 수 없음: {account_phone}")
-                if account:
-                    account_groups_list = self.get_account_groups(groups, account_phone)
-                    if account_groups_list:
-                        self.send_account_messages(pool_name, account, account_groups_list, messages, group_interval, 1)
-                
-                if not self.is_running:
-                    break
-                
-                # 이후 계정2,3과 계정4,1을 번갈아 반복
-                group_sequence = 1  # 홀수: 계정2,3 / 짝수: 계정4,1
-                
-                while self.is_running:
-                    if group_sequence % 2 == 1:  # 계정2,3 (홀수)
-                        self.log(f"📦 {pool_name} 계정2,3 전송 시작")
-                        current_groups = [1, 2] if account_count >= 3 else [1]
-                    else:  # 계정4,1 (짝수)
-                        self.log(f"📦 {pool_name} 계정4,1 전송 시작")
-                        current_groups = [3, 0] if account_count >= 4 else []
-                    
-                    if not current_groups:
+                # 모든 계정을 순차적으로 처리 (계정 1개여도 정상 작동)
+                for idx in range(account_count):
+                    if not self.is_running:
                         break
                     
-                    # 그룹 내 계정들을 동시 처리
-                    import threading
-                    threads = []
+                    account_data = pool_accounts[idx]
+                    if not account_data:
+                        continue
                     
-                    for idx in current_groups:
-                        if idx >= len(pool_accounts):
-                            continue
-                        
-                        account_data = pool_accounts[idx]
-                        if not account_data:
-                            continue
-                        
-                        if isinstance(account_data, dict):
-                            account_phone = account_data.get('account', account_data)
-                        else:
-                            account_phone = account_data
-                        
-                        account = self.find_account(accounts, account_phone)
-                        if not account:
-                            continue
-                        
+                    if isinstance(account_data, dict):
+                        account_phone = account_data.get('account', account_data)
+                    else:
+                        account_phone = account_data
+                    
+                    self.log(f"📦 {pool_name} 계정{idx+1} 전송 시작")
+                    
+                    account = self.find_account(accounts, account_phone)
+                    if account:
                         account_groups_list = self.get_account_groups(groups, account_phone)
-                        if not account_groups_list:
-                            continue
-                        
-                        thread = threading.Thread(
-                            target=self.send_account_messages,
-                            args=(pool_name, account, account_groups_list, messages, group_interval, idx + 1),
-                            daemon=True
-                        )
-                        thread.start()
-                        threads.append(thread)
+                        if account_groups_list:
+                            self.send_account_messages(pool_name, account, account_groups_list, messages, group_interval, idx + 1)
+                        else:
+                            self.log(f"⚠️ {pool_name} 계정{idx+1}의 그룹이 없습니다.")
+                    else:
+                        self.log(f"⚠️ {pool_name} 계정{idx+1}을 찾을 수 없습니다.")
                     
-                    # 모든 계정이 완료될 때까지 대기
-                    for thread in threads:
-                        thread.join()
-                    
-                    group_sequence += 1
+                    # 계정 간 대기시간 (마지막 계정이면 다음 사이클로 넘어가기 전 대기)
+                    if idx < account_count - 1 and self.is_running:
+                        if account_interval > 0:
+                            self.log(f"⏳ 다음 계정 전송 대기시간: {account_interval}초")
+                            waited = 0
+                            while waited < account_interval and self.is_running:
+                                time.sleep(1)
+                                waited += 1
+                
+                # 사이클 완료 후 다음 사이클 시작 전 대기시간
+                self.log(f"✅ {pool_name} 사이클 {cycle_count} 완료 - 모든 그룹 전송 완료")
+                if cycle_interval > 0:
+                    self.log(f"⏳ 다음 사이클 시작 대기시간: {cycle_interval//60}분")
+                    waited = 0
+                    while waited < cycle_interval and self.is_running:
+                        time.sleep(1)
+                        waited += 1
+                        if waited % 60 == 0:  # 1분마다 로그
+                            remaining = cycle_interval - waited
+                            self.log(f"⏱️ 다음 사이클까지 {remaining//60}분 {remaining%60}초 남음")
+                    if self.is_running:
+                        self.log(f"🔄 다음 사이클 시작")
+                else:
+                    self.log(f"🔄 다음 사이클 시작 (대기시간 없음)")
                 
             except Exception as e:
                 self.log(f"❌ {pool_name} 사이클 오류: {e}")
@@ -335,30 +319,32 @@ class AutoSenderDaemon:
                 time.sleep(5)  # 5초 대기 후 재시도
     
     def send_account_messages(self, pool_name, account, account_groups, messages, group_interval, account_order):
-        """계정별 메시지 전송"""
-        try:
-            if not account:
-                self.log(f"⚠️ {pool_name} 계정{account_order} 정보가 없습니다.")
+        """계정별 메시지 전송 (동시 실행 방지)"""
+        # 락을 획득하여 한 번에 하나의 계정만 전송하도록 보장
+        with self.send_lock:
+            try:
+                if not account:
+                    self.log(f"⚠️ {pool_name} 계정{account_order} 정보가 없습니다.")
+                    return False
+                    
+                if not account_groups:
+                    self.log(f"⚠️ {pool_name} 계정{account_order}의 그룹이 없습니다.")
+                    return False
+                    
+                self.log(f"📋 {pool_name} 계정{account_order}: {len(account_groups)}개 그룹에 메시지 전송")
+                success = self.send_messages_to_groups(account, account_groups, messages, group_interval)
+                if success:
+                    self.log(f"✅ {pool_name} 계정{account_order} 완료")
+                else:
+                    self.log(f"❌ {pool_name} 계정{account_order} 전송 실패")
+                    # 계정 정지 감지됨인 경우만 중지 (메시지 없는 경우 제외)
+                    # send_messages_to_groups에서 정지 감지 시 is_running = False 설정됨
+                    if not self.is_running:
+                        self.log(f"⚠️ 계정 정지로 인해 자동전송 중지됨")
+                return success
+            except Exception as e:
+                self.log(f"❌ {pool_name} 계정{account_order} 오류: {e}")
                 return False
-                
-            if not account_groups:
-                self.log(f"⚠️ {pool_name} 계정{account_order}의 그룹이 없습니다.")
-                return False
-                
-            self.log(f"📋 {pool_name} 계정{account_order}: {len(account_groups)}개 그룹에 메시지 전송")
-            success = self.send_messages_to_groups(account, account_groups, messages, group_interval)
-            if success:
-                self.log(f"✅ {pool_name} 계정{account_order} 완료")
-            else:
-                self.log(f"❌ {pool_name} 계정{account_order} 전송 실패")
-                # 계정 정지 감지됨인 경우만 중지 (메시지 없는 경우 제외)
-                # send_messages_to_groups에서 정지 감지 시 is_running = False 설정됨
-                if not self.is_running:
-                    self.log(f"⚠️ 계정 정지로 인해 자동전송 중지됨")
-            return success
-        except Exception as e:
-            self.log(f"❌ {pool_name} 계정{account_order} 오류: {e}")
-            return False
     
     def create_pool_order(self, pools):
         """풀별 계정 목록 생성 (각 풀 독립적으로 처리)"""
@@ -565,15 +551,18 @@ class AutoSenderDaemon:
                                 self.group_wait_times[group_id] = wait_until
                                 self.log(f"⚠️ 그룹 '{group_title}' 슬로우 모드 활성화 - 60초 대기")
                         else:
-                            # TypeNotFoundError 등 프로토콜 호환성 오류는 무시
-                            if "TypeNotFoundError" in error_str or "Constructor ID" in error_str or "76bec211" in error_str:
-                                self.log(f"⚠️ {channel_title} -> {group_title}: 프로토콜 호환성 오류 (무시)")
-                            else:
-                                self.log(f"❌ 메시지 전달 실패 ({channel_title} -> {group_title}): {str(e)[:100]}")
+                            error_str = str(e)
+                            self.log(f"❌ 메시지 전달 실패 ({channel_title} -> {group_title}): {error_str[:200]}")
                             
-                            # 계정 정지 감지
-                            if any(keyword in error_str.upper() for keyword in ['BANNED', 'RESTRICTED', 'BLOCKED', 'AUTH_KEY_INVALID', 'SESSION_REVOKED']):
-                                self.log(f"⚠️ 계정 정지 감지! 자동전송을 즉시 중지합니다.")
+                            # 계정 정지 감지 - 강화
+                            if any(keyword in error_str.upper() for keyword in ['BANNED', 'RESTRICTED', 'BLOCKED', 'AUTH_KEY_INVALID', 'SESSION_REVOKED', 'PHONE_NUMBER_BANNED', 'ACCOUNT_BANNED']):
+                                self.log(f"⚠️⚠️⚠️ 계정 정지 감지! 자동전송을 즉시 중지합니다.")
+                                self.is_running = False
+                                return False
+                            
+                            # invalid Peer 오류는 계정 정지 신호 - 1회라도 발생하면 즉시 중지
+                            if "invalid Peer" in error_str or "PeerChannel" in error_str or "Could not find the input entity" in error_str:
+                                self.log(f"⚠️⚠️⚠️ 계정 정지 감지! Peer 오류 발생 - 자동전송 즉시 중지")
                                 self.is_running = False
                                 return False
                 
